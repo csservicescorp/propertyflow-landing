@@ -408,15 +408,6 @@
       overflow: hidden;
     }
 
-    .method-canvas {
-      position: absolute;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      opacity: 0.55;
-      pointer-events: none;
-    }
-
     .method-header {
       max-width: 620px;
       margin-bottom: 64px;
@@ -513,6 +504,16 @@
       background: var(--dark-2);
       border-top: 1px solid var(--border);
       border-bottom: 1px solid var(--border);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .forwho-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
     }
 
     .forwho-grid {
@@ -927,7 +928,6 @@
 
   <!-- THE METHOD -->
   <section class="method-section" id="method">
-    <canvas class="method-canvas" id="methodCanvas"></canvas>
     <div class="container">
       <div class="method-header fade-up">
         <div class="section-eyebrow">The Framework</div>
@@ -999,6 +999,7 @@
 
   <!-- FOR WHO -->
   <section class="forwho-section">
+    <canvas class="forwho-canvas" id="forwhoCanvas"></canvas>
     <div class="container">
       <div class="fade-up">
         <div class="section-eyebrow">Who It's For</div>
@@ -1123,172 +1124,191 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
   <script>
-  // ── 3D NETWORK ANIMATION ──
-  const canvas = document.getElementById('methodCanvas');
-  const ctx = canvas.getContext('2d');
+  // ── CLEAN LINE ANIMATION — HOA → Property Manager → Vendor → Board ──
+  const fCanvas = document.getElementById('forwhoCanvas');
+  const fCtx = fCanvas.getContext('2d');
 
-  let W, H, nodes, mouse = { x: 0, y: 0 };
+  const NODES = [
+    { label: 'HOA', icon: '⬡' },
+    { label: 'Property Manager', icon: '◈' },
+    { label: 'Vendor', icon: '⬢' },
+    { label: 'Board', icon: '◉' },
+  ];
 
-  const ICONS = ['⬡', '◈', '⬢', '◉', '⬟', '◎'];
-  const LABELS = ['HOA', 'CAM', 'Vendor', 'Board', 'Property', 'Manager', 'Request', 'Inspect', 'Report', 'Ticket'];
+  let fW, fH, nodePositions = [];
+  let progress = 0; // 0 → 1 along the full path
+  let particles = [];
 
-  function resize() {
-    const section = canvas.parentElement;
-    W = canvas.width = section.offsetWidth;
-    H = canvas.height = section.offsetHeight;
-    initNodes();
+  function fResize() {
+    const section = fCanvas.parentElement;
+    fW = fCanvas.width = section.offsetWidth;
+    fH = fCanvas.height = section.offsetHeight;
+    buildPositions();
   }
 
-  function initNodes() {
-    const count = Math.floor((W * H) / 18000);
-    nodes = Array.from({ length: Math.min(count, 40) }, (_, i) => ({
-      x: Math.random() * W,
-      y: Math.random() * H,
-      vx: (Math.random() - 0.5) * 0.4,
-      vy: (Math.random() - 0.5) * 0.4,
-      r: Math.random() * 3 + 2,
-      label: LABELS[i % LABELS.length],
-      pulse: Math.random() * Math.PI * 2,
-      pulseSpeed: 0.02 + Math.random() * 0.02,
-      type: Math.floor(Math.random() * 3), // 0=circle, 1=hex, 2=building
-      depth: 0.4 + Math.random() * 0.6,
+  function buildPositions() {
+    const margin = fW * 0.12;
+    const y = fH * 0.52;
+    const step = (fW - margin * 2) / (NODES.length - 1);
+    nodePositions = NODES.map((n, i) => ({
+      x: margin + i * step,
+      y: y,
+      label: n.label,
     }));
   }
 
-  function drawHex(x, y, r) {
-    ctx.beginPath();
-    for (let i = 0; i < 6; i++) {
-      const a = (Math.PI / 3) * i - Math.PI / 6;
-      i === 0 ? ctx.moveTo(x + r * Math.cos(a), y + r * Math.sin(a))
-               : ctx.lineTo(x + r * Math.cos(a), y + r * Math.sin(a));
-    }
-    ctx.closePath();
+  // Spawn a packet every ~1.2s
+  let lastSpawn = 0;
+  function spawnParticle(now) {
+    particles.push({ t: 0, speed: 0.0018 + Math.random() * 0.0008, alpha: 1 });
+    lastSpawn = now;
   }
 
-  function drawBuilding(x, y, r) {
-    const s = r * 1.4;
-    ctx.beginPath();
-    ctx.rect(x - s/2, y - s, s, s);
-    ctx.rect(x - s/3, y - s*1.4, s*0.66, s*0.4);
+  // Get point along the polyline at t [0..1]
+  function pathPoint(t) {
+    const total = nodePositions.length - 1;
+    const seg = t * total;
+    const i = Math.min(Math.floor(seg), total - 1);
+    const f = seg - i;
+    const a = nodePositions[i], b = nodePositions[i + 1];
+    return { x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f };
   }
 
-  function lerp(a, b, t) { return a + (b - a) * t; }
+  function drawFrame(now) {
+    fCtx.clearRect(0, 0, fW, fH);
 
-  function animate() {
-    ctx.clearRect(0, 0, W, H);
+    if (nodePositions.length < 2) { requestAnimationFrame(drawFrame); return; }
 
-    // Draw connections
-    for (let i = 0; i < nodes.length; i++) {
-      for (let j = i + 1; j < nodes.length; j++) {
-        const a = nodes[i], b = nodes[j];
-        const dx = a.x - b.x, dy = a.y - b.y;
-        const dist = Math.sqrt(dx*dx + dy*dy);
-        const maxDist = 180;
-        if (dist < maxDist) {
-          const alpha = (1 - dist / maxDist) * 0.25 * ((a.depth + b.depth) / 2);
-          const grad = ctx.createLinearGradient(a.x, a.y, b.x, b.y);
-          grad.addColorStop(0, `rgba(15,94,255,${alpha})`);
-          grad.addColorStop(0.5, `rgba(76,201,255,${alpha * 1.4})`);
-          grad.addColorStop(1, `rgba(15,94,255,${alpha})`);
-          ctx.strokeStyle = grad;
-          ctx.lineWidth = (a.depth + b.depth) / 2;
-          ctx.beginPath();
-          ctx.moveTo(a.x, a.y);
-          // slight curve for organic feel
-          const mx = (a.x + b.x) / 2 + (Math.sin(dist * 0.05) * 20);
-          const my = (a.y + b.y) / 2 + (Math.cos(dist * 0.05) * 20);
-          ctx.quadraticCurveTo(mx, my, b.x, b.y);
-          ctx.stroke();
+    // ── Draw base line (dim) ──
+    fCtx.beginPath();
+    fCtx.moveTo(nodePositions[0].x, nodePositions[0].y);
+    for (let i = 1; i < nodePositions.length; i++) {
+      fCtx.lineTo(nodePositions[i].x, nodePositions[i].y);
+    }
+    fCtx.strokeStyle = 'rgba(15,94,255,0.12)';
+    fCtx.lineWidth = 1.5;
+    fCtx.stroke();
 
-          // data packet traveling along connection
-          if (Math.random() < 0.002) {
-            const t = (Date.now() % 2000) / 2000;
-            const px = lerp(a.x, b.x, t);
-            const py = lerp(a.y, b.y, t);
-            ctx.beginPath();
-            ctx.arc(px, py, 2, 0, Math.PI * 2);
-            ctx.fillStyle = `rgba(76,201,255,0.9)`;
-            ctx.fill();
-          }
-        }
+    // ── Animated fill line (progresses left to right, loops) ──
+    progress += 0.0012;
+    if (progress > 1.15) progress = 0;
+    const drawTo = Math.min(progress, 1);
+
+    if (drawTo > 0) {
+      const total = nodePositions.length - 1;
+      fCtx.beginPath();
+      fCtx.moveTo(nodePositions[0].x, nodePositions[0].y);
+      for (let i = 1; i < nodePositions.length; i++) {
+        const segStart = (i - 1) / total;
+        const segEnd = i / total;
+        if (drawTo <= segStart) break;
+        const segProgress = Math.min((drawTo - segStart) / (segEnd - segStart), 1);
+        const nx = nodePositions[i-1].x + (nodePositions[i].x - nodePositions[i-1].x) * segProgress;
+        const ny = nodePositions[i-1].y + (nodePositions[i].y - nodePositions[i-1].y) * segProgress;
+        fCtx.lineTo(nx, ny);
+      }
+      const grad = fCtx.createLinearGradient(nodePositions[0].x, 0, nodePositions[nodePositions.length-1].x, 0);
+      grad.addColorStop(0, 'rgba(15,94,255,0.9)');
+      grad.addColorStop(0.5, 'rgba(76,201,255,1)');
+      grad.addColorStop(1, 'rgba(15,94,255,0.9)');
+      fCtx.strokeStyle = grad;
+      fCtx.lineWidth = 2;
+      fCtx.stroke();
+
+      // Glowing tip
+      if (drawTo < 1) {
+        const tip = pathPoint(drawTo);
+        const tipGlow = fCtx.createRadialGradient(tip.x, tip.y, 0, tip.x, tip.y, 18);
+        tipGlow.addColorStop(0, 'rgba(76,201,255,0.9)');
+        tipGlow.addColorStop(1, 'rgba(76,201,255,0)');
+        fCtx.beginPath();
+        fCtx.arc(tip.x, tip.y, 18, 0, Math.PI * 2);
+        fCtx.fillStyle = tipGlow;
+        fCtx.fill();
+        fCtx.beginPath();
+        fCtx.arc(tip.x, tip.y, 3.5, 0, Math.PI * 2);
+        fCtx.fillStyle = '#4CC9FF';
+        fCtx.fill();
       }
     }
 
-    // Draw nodes
-    nodes.forEach(n => {
-      n.pulse += n.pulseSpeed;
-      const glow = Math.sin(n.pulse) * 0.5 + 0.5;
-      const size = n.r * n.depth * (1 + glow * 0.3);
-
-      // Mouse interaction — nodes drift toward cursor gently
-      const mdx = mouse.x - n.x, mdy = mouse.y - n.y;
-      const mdist = Math.sqrt(mdx*mdx + mdy*mdy);
-      if (mdist < 200) {
-        n.vx += mdx * 0.00003;
-        n.vy += mdy * 0.00003;
-      }
-
-      // Move
-      n.x += n.vx * n.depth;
-      n.y += n.vy * n.depth;
-      if (n.x < 0 || n.x > W) n.vx *= -1;
-      if (n.y < 0 || n.y > H) n.vy *= -1;
-
-      // Glow ring
-      const glowGrad = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, size * 4);
-      glowGrad.addColorStop(0, `rgba(15,94,255,${0.15 * n.depth * glow})`);
-      glowGrad.addColorStop(1, 'rgba(15,94,255,0)');
-      ctx.beginPath();
-      ctx.arc(n.x, n.y, size * 4, 0, Math.PI * 2);
-      ctx.fillStyle = glowGrad;
-      ctx.fill();
-
-      // Node shape
-      ctx.save();
-      if (n.type === 1) {
-        drawHex(n.x, n.y, size * 2.5);
-        ctx.strokeStyle = `rgba(76,201,255,${0.6 * n.depth})`;
-        ctx.lineWidth = 1;
-        ctx.stroke();
-        ctx.fillStyle = `rgba(15,94,255,${0.15 * n.depth})`;
-        ctx.fill();
-      } else if (n.type === 2) {
-        drawBuilding(n.x, n.y, size);
-        ctx.strokeStyle = `rgba(76,201,255,${0.5 * n.depth})`;
-        ctx.lineWidth = 1;
-        ctx.stroke();
-      } else {
-        ctx.beginPath();
-        ctx.arc(n.x, n.y, size * 1.5, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(15,94,255,${0.25 * n.depth})`;
-        ctx.fill();
-        ctx.strokeStyle = `rgba(76,201,255,${0.7 * n.depth})`;
-        ctx.lineWidth = 1;
-        ctx.stroke();
-      }
-      ctx.restore();
-
-      // Label
-      if (n.depth > 0.7 && size > 3) {
-        ctx.font = `${Math.floor(9 * n.depth)}px Inter, sans-serif`;
-        ctx.fillStyle = `rgba(76,201,255,${0.55 * n.depth * glow})`;
-        ctx.textAlign = 'center';
-        ctx.fillText(n.label, n.x, n.y + size * 3.5);
-      }
+    // ── Particles traveling the line ──
+    if (now - lastSpawn > 1200) spawnParticle(now);
+    particles = particles.filter(p => p.t <= 1.05);
+    particles.forEach(p => {
+      p.t += p.speed;
+      if (p.t > 1) return;
+      const pos = pathPoint(p.t);
+      const fade = p.t < 0.1 ? p.t / 0.1 : p.t > 0.9 ? (1 - p.t) / 0.1 : 1;
+      const grd = fCtx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, 10);
+      grd.addColorStop(0, `rgba(76,201,255,${0.8 * fade})`);
+      grd.addColorStop(1, 'rgba(76,201,255,0)');
+      fCtx.beginPath();
+      fCtx.arc(pos.x, pos.y, 10, 0, Math.PI * 2);
+      fCtx.fillStyle = grd;
+      fCtx.fill();
+      fCtx.beginPath();
+      fCtx.arc(pos.x, pos.y, 2.5, 0, Math.PI * 2);
+      fCtx.fillStyle = `rgba(255,255,255,${fade})`;
+      fCtx.fill();
     });
 
-    requestAnimationFrame(animate);
+    // ── Nodes ──
+    nodePositions.forEach((n, i) => {
+      const reached = progress * (nodePositions.length - 1) >= i;
+      const alpha = reached ? 1 : 0.25;
+
+      // Outer ring glow
+      if (reached) {
+        const glow = fCtx.createRadialGradient(n.x, n.y, 0, n.x, n.y, 32);
+        glow.addColorStop(0, 'rgba(15,94,255,0.18)');
+        glow.addColorStop(1, 'rgba(15,94,255,0)');
+        fCtx.beginPath();
+        fCtx.arc(n.x, n.y, 32, 0, Math.PI * 2);
+        fCtx.fillStyle = glow;
+        fCtx.fill();
+      }
+
+      // Outer ring
+      fCtx.beginPath();
+      fCtx.arc(n.x, n.y, 18, 0, Math.PI * 2);
+      fCtx.strokeStyle = `rgba(15,94,255,${0.4 * alpha})`;
+      fCtx.lineWidth = 1;
+      fCtx.stroke();
+
+      // Inner fill
+      fCtx.beginPath();
+      fCtx.arc(n.x, n.y, 10, 0, Math.PI * 2);
+      fCtx.fillStyle = reached ? 'rgba(15,94,255,0.35)' : 'rgba(15,94,255,0.08)';
+      fCtx.fill();
+      fCtx.strokeStyle = reached ? 'rgba(76,201,255,0.9)' : 'rgba(76,201,255,0.2)';
+      fCtx.lineWidth = 1.5;
+      fCtx.stroke();
+
+      // Dot center
+      fCtx.beginPath();
+      fCtx.arc(n.x, n.y, 3.5, 0, Math.PI * 2);
+      fCtx.fillStyle = reached ? '#4CC9FF' : 'rgba(76,201,255,0.3)';
+      fCtx.fill();
+
+      // Label above
+      fCtx.font = `600 13px Inter, sans-serif`;
+      fCtx.fillStyle = `rgba(255,255,255,${reached ? 0.9 : 0.3})`;
+      fCtx.textAlign = 'center';
+      fCtx.fillText(n.label, n.x, n.y - 30);
+
+      // Number below
+      fCtx.font = `500 11px Inter, sans-serif`;
+      fCtx.fillStyle = `rgba(76,201,255,${reached ? 0.7 : 0.2})`;
+      fCtx.fillText(`0${i+1}`, n.x, n.y + 34);
+    });
+
+    requestAnimationFrame(drawFrame);
   }
 
-  window.addEventListener('resize', resize);
-  canvas.parentElement.addEventListener('mousemove', e => {
-    const rect = canvas.getBoundingClientRect();
-    mouse.x = e.clientX - rect.left;
-    mouse.y = e.clientY - rect.top;
-  });
-
-  resize();
-  animate();
+  window.addEventListener('resize', fResize);
+  fResize();
+  requestAnimationFrame(drawFrame);
   </script>
 
   <script>
