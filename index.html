@@ -402,7 +402,20 @@
     }
 
     /* METHOD */
-    .method-section { background: var(--dark); }
+    .method-section {
+      background: var(--dark);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .method-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0.55;
+      pointer-events: none;
+    }
 
     .method-header {
       max-width: 620px;
@@ -914,11 +927,12 @@
 
   <!-- THE METHOD -->
   <section class="method-section" id="method">
+    <canvas class="method-canvas" id="methodCanvas"></canvas>
     <div class="container">
       <div class="method-header fade-up">
         <div class="section-eyebrow">The Framework</div>
         <h2 class="section-title">The Siman Method™</h2>
-        <p class="section-body">A four-pillar operational framework designed to bring structure, accountability, and continuity to any property — regardless of size, location, or management team.</p>
+        <p class="section-body">A six-phase operational framework designed to bring structure, accountability, and continuity to any property — regardless of size, location, or management team.</p>
       </div>
 
       <div class="pillars-grid fade-up">
@@ -1108,6 +1122,175 @@
   </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+  <script>
+  // ── 3D NETWORK ANIMATION ──
+  const canvas = document.getElementById('methodCanvas');
+  const ctx = canvas.getContext('2d');
+
+  let W, H, nodes, mouse = { x: 0, y: 0 };
+
+  const ICONS = ['⬡', '◈', '⬢', '◉', '⬟', '◎'];
+  const LABELS = ['HOA', 'CAM', 'Vendor', 'Board', 'Property', 'Manager', 'Request', 'Inspect', 'Report', 'Ticket'];
+
+  function resize() {
+    const section = canvas.parentElement;
+    W = canvas.width = section.offsetWidth;
+    H = canvas.height = section.offsetHeight;
+    initNodes();
+  }
+
+  function initNodes() {
+    const count = Math.floor((W * H) / 18000);
+    nodes = Array.from({ length: Math.min(count, 40) }, (_, i) => ({
+      x: Math.random() * W,
+      y: Math.random() * H,
+      vx: (Math.random() - 0.5) * 0.4,
+      vy: (Math.random() - 0.5) * 0.4,
+      r: Math.random() * 3 + 2,
+      label: LABELS[i % LABELS.length],
+      pulse: Math.random() * Math.PI * 2,
+      pulseSpeed: 0.02 + Math.random() * 0.02,
+      type: Math.floor(Math.random() * 3), // 0=circle, 1=hex, 2=building
+      depth: 0.4 + Math.random() * 0.6,
+    }));
+  }
+
+  function drawHex(x, y, r) {
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const a = (Math.PI / 3) * i - Math.PI / 6;
+      i === 0 ? ctx.moveTo(x + r * Math.cos(a), y + r * Math.sin(a))
+               : ctx.lineTo(x + r * Math.cos(a), y + r * Math.sin(a));
+    }
+    ctx.closePath();
+  }
+
+  function drawBuilding(x, y, r) {
+    const s = r * 1.4;
+    ctx.beginPath();
+    ctx.rect(x - s/2, y - s, s, s);
+    ctx.rect(x - s/3, y - s*1.4, s*0.66, s*0.4);
+  }
+
+  function lerp(a, b, t) { return a + (b - a) * t; }
+
+  function animate() {
+    ctx.clearRect(0, 0, W, H);
+
+    // Draw connections
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        const a = nodes[i], b = nodes[j];
+        const dx = a.x - b.x, dy = a.y - b.y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        const maxDist = 180;
+        if (dist < maxDist) {
+          const alpha = (1 - dist / maxDist) * 0.25 * ((a.depth + b.depth) / 2);
+          const grad = ctx.createLinearGradient(a.x, a.y, b.x, b.y);
+          grad.addColorStop(0, `rgba(15,94,255,${alpha})`);
+          grad.addColorStop(0.5, `rgba(76,201,255,${alpha * 1.4})`);
+          grad.addColorStop(1, `rgba(15,94,255,${alpha})`);
+          ctx.strokeStyle = grad;
+          ctx.lineWidth = (a.depth + b.depth) / 2;
+          ctx.beginPath();
+          ctx.moveTo(a.x, a.y);
+          // slight curve for organic feel
+          const mx = (a.x + b.x) / 2 + (Math.sin(dist * 0.05) * 20);
+          const my = (a.y + b.y) / 2 + (Math.cos(dist * 0.05) * 20);
+          ctx.quadraticCurveTo(mx, my, b.x, b.y);
+          ctx.stroke();
+
+          // data packet traveling along connection
+          if (Math.random() < 0.002) {
+            const t = (Date.now() % 2000) / 2000;
+            const px = lerp(a.x, b.x, t);
+            const py = lerp(a.y, b.y, t);
+            ctx.beginPath();
+            ctx.arc(px, py, 2, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(76,201,255,0.9)`;
+            ctx.fill();
+          }
+        }
+      }
+    }
+
+    // Draw nodes
+    nodes.forEach(n => {
+      n.pulse += n.pulseSpeed;
+      const glow = Math.sin(n.pulse) * 0.5 + 0.5;
+      const size = n.r * n.depth * (1 + glow * 0.3);
+
+      // Mouse interaction — nodes drift toward cursor gently
+      const mdx = mouse.x - n.x, mdy = mouse.y - n.y;
+      const mdist = Math.sqrt(mdx*mdx + mdy*mdy);
+      if (mdist < 200) {
+        n.vx += mdx * 0.00003;
+        n.vy += mdy * 0.00003;
+      }
+
+      // Move
+      n.x += n.vx * n.depth;
+      n.y += n.vy * n.depth;
+      if (n.x < 0 || n.x > W) n.vx *= -1;
+      if (n.y < 0 || n.y > H) n.vy *= -1;
+
+      // Glow ring
+      const glowGrad = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, size * 4);
+      glowGrad.addColorStop(0, `rgba(15,94,255,${0.15 * n.depth * glow})`);
+      glowGrad.addColorStop(1, 'rgba(15,94,255,0)');
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, size * 4, 0, Math.PI * 2);
+      ctx.fillStyle = glowGrad;
+      ctx.fill();
+
+      // Node shape
+      ctx.save();
+      if (n.type === 1) {
+        drawHex(n.x, n.y, size * 2.5);
+        ctx.strokeStyle = `rgba(76,201,255,${0.6 * n.depth})`;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.fillStyle = `rgba(15,94,255,${0.15 * n.depth})`;
+        ctx.fill();
+      } else if (n.type === 2) {
+        drawBuilding(n.x, n.y, size);
+        ctx.strokeStyle = `rgba(76,201,255,${0.5 * n.depth})`;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      } else {
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, size * 1.5, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(15,94,255,${0.25 * n.depth})`;
+        ctx.fill();
+        ctx.strokeStyle = `rgba(76,201,255,${0.7 * n.depth})`;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      // Label
+      if (n.depth > 0.7 && size > 3) {
+        ctx.font = `${Math.floor(9 * n.depth)}px Inter, sans-serif`;
+        ctx.fillStyle = `rgba(76,201,255,${0.55 * n.depth * glow})`;
+        ctx.textAlign = 'center';
+        ctx.fillText(n.label, n.x, n.y + size * 3.5);
+      }
+    });
+
+    requestAnimationFrame(animate);
+  }
+
+  window.addEventListener('resize', resize);
+  canvas.parentElement.addEventListener('mousemove', e => {
+    const rect = canvas.getBoundingClientRect();
+    mouse.x = e.clientX - rect.left;
+    mouse.y = e.clientY - rect.top;
+  });
+
+  resize();
+  animate();
+  </script>
+
   <script>
     // Flow line
     window.addEventListener('scroll', () => {
