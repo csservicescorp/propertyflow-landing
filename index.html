@@ -510,8 +510,9 @@
 
     .forwho-canvas {
       position: absolute;
-      inset: 0;
-      width: 100%;
+      right: 0;
+      top: 0;
+      width: 45%;
       height: 100%;
       pointer-events: none;
     }
@@ -1141,14 +1142,14 @@
 
   function fResize() {
     const section = fCanvas.parentElement;
-    fW = fCanvas.width = section.offsetWidth;
+    fW = fCanvas.width = section.offsetWidth * 0.45;
     fH = fCanvas.height = section.offsetHeight;
     buildPositions();
   }
 
   function buildPositions() {
-    const margin = fW * 0.12;
-    const y = fH * 0.52;
+    const margin = fW * 0.08;
+    const y = fH * 0.5;
     const step = (fW - margin * 2) / (NODES.length - 1);
     nodePositions = NODES.map((n, i) => ({
       x: margin + i * step,
@@ -1260,25 +1261,25 @@
 
       // Outer ring glow
       if (reached) {
-        const glow = fCtx.createRadialGradient(n.x, n.y, 0, n.x, n.y, 32);
+        const glow = fCtx.createRadialGradient(n.x, n.y, 0, n.x, n.y, 20);
         glow.addColorStop(0, 'rgba(15,94,255,0.18)');
         glow.addColorStop(1, 'rgba(15,94,255,0)');
         fCtx.beginPath();
-        fCtx.arc(n.x, n.y, 32, 0, Math.PI * 2);
+        fCtx.arc(n.x, n.y, 20, 0, Math.PI * 2);
         fCtx.fillStyle = glow;
         fCtx.fill();
       }
 
       // Outer ring
       fCtx.beginPath();
-      fCtx.arc(n.x, n.y, 18, 0, Math.PI * 2);
+      fCtx.arc(n.x, n.y, 12, 0, Math.PI * 2);
       fCtx.strokeStyle = `rgba(15,94,255,${0.4 * alpha})`;
       fCtx.lineWidth = 1;
       fCtx.stroke();
 
       // Inner fill
       fCtx.beginPath();
-      fCtx.arc(n.x, n.y, 10, 0, Math.PI * 2);
+      fCtx.arc(n.x, n.y, 7, 0, Math.PI * 2);
       fCtx.fillStyle = reached ? 'rgba(15,94,255,0.35)' : 'rgba(15,94,255,0.08)';
       fCtx.fill();
       fCtx.strokeStyle = reached ? 'rgba(76,201,255,0.9)' : 'rgba(76,201,255,0.2)';
@@ -1287,20 +1288,20 @@
 
       // Dot center
       fCtx.beginPath();
-      fCtx.arc(n.x, n.y, 3.5, 0, Math.PI * 2);
+      fCtx.arc(n.x, n.y, 2.5, 0, Math.PI * 2);
       fCtx.fillStyle = reached ? '#4CC9FF' : 'rgba(76,201,255,0.3)';
       fCtx.fill();
 
       // Label above
-      fCtx.font = `600 13px Inter, sans-serif`;
-      fCtx.fillStyle = `rgba(255,255,255,${reached ? 0.9 : 0.3})`;
+      fCtx.font = `600 11px Inter, sans-serif`;
+      fCtx.fillStyle = `rgba(255,255,255,${reached ? 0.85 : 0.25})`;
       fCtx.textAlign = 'center';
-      fCtx.fillText(n.label, n.x, n.y - 30);
+      fCtx.fillText(n.label, n.x, n.y - 22);
 
       // Number below
-      fCtx.font = `500 11px Inter, sans-serif`;
-      fCtx.fillStyle = `rgba(76,201,255,${reached ? 0.7 : 0.2})`;
-      fCtx.fillText(`0${i+1}`, n.x, n.y + 34);
+      fCtx.font = `500 10px Inter, sans-serif`;
+      fCtx.fillStyle = `rgba(76,201,255,${reached ? 0.65 : 0.18})`;
+      fCtx.fillText(`0${i+1}`, n.x, n.y + 26);
     });
 
     requestAnimationFrame(drawFrame);
